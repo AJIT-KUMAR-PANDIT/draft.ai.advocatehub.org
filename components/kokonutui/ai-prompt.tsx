@@ -164,7 +164,7 @@ export default function AI_Prompt({
   };
 
   return (
-    <div className={cn("w-4/6 py-4", className)}>
+    <div className={cn("w-[78%] sm:w-[88%] md:w-4/6 lg:w-s3/5 xl:w-2/5 py-4", className)}>
       <div className="rounded-2xl bg-black/5 p-1.5 pt-4 dark:bg-white/5">
         <div className="mx-2 mb-2.5 flex items-center gap-2">
           <div className="flex flex-1 items-center gap-2">
