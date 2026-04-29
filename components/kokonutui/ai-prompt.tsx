@@ -10,7 +10,7 @@
  * @github: https://github.com/kokonut-labs/kokonutui
  */
 
-import { ArrowRight, Bot, Check, ChevronDown, Paperclip } from "lucide-react";
+import { ArrowRight, Bot, Check, ChevronDown, Paperclip, Puzzle, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import Anthropic from "@/components/kokonutui/anthropic";
@@ -66,6 +66,8 @@ interface AIPromptProps {
   headerAction?: string;
   onSubmit?: (value: string, model: string) => void;
   onValueChange?: (value: string) => void;
+  onExtensionSelect?: (ext: string | null) => void;
+  activeExtension?: string | null;
   className?: string;
 }
 
@@ -85,9 +87,12 @@ export default function AI_Prompt({
   headerAction = "Ship Now!",
   onSubmit,
   onValueChange,
+  onExtensionSelect,
+  activeExtension,
   className,
 }: AIPromptProps) {
   const [value, setValue] = useState("");
+  const [showExtensions, setShowExtensions] = useState(false);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 72,
     maxHeight: 300,
@@ -257,6 +262,58 @@ export default function AI_Prompt({
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {/* ── Extensions button ── */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      title="Extensions"
+                      onClick={() => setShowExtensions((s) => !s)}
+                      className={cn(
+                        "flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors",
+                        activeExtension
+                          ? "bg-violet-100 text-violet-700 font-semibold"
+                          : "bg-black/5 text-black/50 hover:text-black dark:bg-white/5 dark:text-white/40 dark:hover:text-white"
+                      )}
+                    >
+                      <Puzzle className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">{activeExtension ? activeExtension : "Extensions"}</span>
+                      {activeExtension && (
+                        <span
+                          role="button"
+                          onClick={(e) => { e.stopPropagation(); onExtensionSelect?.(null); setShowExtensions(false); }}
+                          className="ml-0.5 rounded-full hover:bg-violet-200 p-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Extensions popover */}
+                    {showExtensions && (
+                      <div className="absolute bottom-full mb-2 left-0 z-50 bg-white border border-zinc-200 rounded-xl shadow-lg p-2 min-w-[180px]">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 px-2 mb-1.5">Extensions</p>
+                        {[
+                          { id: "skills", label: "📄 Document", desc: "Open AI-generated doc in editor" },
+                        ].map((ext) => (
+                          <button
+                            key={ext.id}
+                            type="button"
+                            onClick={() => { onExtensionSelect?.(ext.id); setShowExtensions(false); }}
+                            className={cn(
+                              "w-full text-left rounded-lg px-2.5 py-2 text-xs transition-colors",
+                              activeExtension === ext.id
+                                ? "bg-violet-50 text-violet-700 font-medium"
+                                : "hover:bg-zinc-50 text-zinc-700"
+                            )}
+                          >
+                            <div className="font-medium">{ext.label}</div>
+                            <div className="text-zinc-400 text-[10px] mt-0.5">{ext.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="mx-0.5 h-4 w-px bg-black/10 dark:bg-white/10" />
                   <label
                     aria-label="Attach file"
