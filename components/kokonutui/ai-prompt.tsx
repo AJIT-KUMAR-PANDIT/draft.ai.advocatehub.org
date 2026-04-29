@@ -65,6 +65,7 @@ interface AIPromptProps {
   headerText?: string;
   headerAction?: string;
   onSubmit?: (value: string, model: string) => void;
+  onValueChange?: (value: string) => void;
   className?: string;
 }
 
@@ -83,6 +84,7 @@ export default function AI_Prompt({
   headerText = "is free this weekend!",
   headerAction = "Ship Now!",
   onSubmit,
+  onValueChange,
   className,
 }: AIPromptProps) {
   const [value, setValue] = useState("");
@@ -190,6 +192,7 @@ export default function AI_Prompt({
                 onChange={(e) => {
                   setValue(e.target.value);
                   adjustHeight();
+                  onValueChange?.(e.target.value);
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
@@ -208,6 +209,8 @@ function SidebarPanel({
   activeId: string;
   setActiveId: (id: string) => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<"history" | "starred">("history");
   const [query, setQuery] = useState("");
 
@@ -235,13 +238,15 @@ function SidebarPanel({
     if (activeId === id) setActiveId("");
   };
 
+  const navigateToChat = (chatId: string) => {
+    setActiveId(chatId);
+    router.push(`/ai/c/${chatId}`);
+    if (isMobile) onClose?.();
+  };
+
   const newChat = () => {
-    const id = String(Date.now());
-    setSessions((prev) => [
-      { id, title: "New conversation", preview: "Start typing...", timestamp: new Date(), starred: false },
-      ...prev,
-    ]);
-    setActiveId(id);
+    router.push("/ai");
+    setActiveId("");
     if (isMobile) onClose?.();
   };
 
@@ -351,7 +356,7 @@ function SidebarPanel({
                         session={s}
                         active={activeId === s.id}
                         collapsed={effectiveCollapsed}
-                        onClick={() => { setActiveId(s.id); if (isMobile) onClose?.(); }}
+                        onClick={() => navigateToChat(s.id)}
                         onStar={() => toggleStar(s.id)}
                         onDelete={() => deleteSession(s.id)}
                       />
@@ -370,7 +375,7 @@ function SidebarPanel({
                   session={s}
                   active={activeId === s.id}
                   collapsed={effectiveCollapsed}
-                  onClick={() => { setActiveId(s.id); if (isMobile) onClose?.(); }}
+                  onClick={() => navigateToChat(s.id)}
                   onStar={() => toggleStar(s.id)}
                   onDelete={() => deleteSession(s.id)}
                 />
@@ -397,10 +402,39 @@ function SidebarPanel({
 
 // ── Main Export ────────────────────────────────────────────────
 export default function AISidebar() {
-  const [collapsed, setCollapsed] = useState(false);       // desktop icon-only mode
-  const [mobileOpen, setMobileOpen] = useState(false);     // mobile drawer open/close
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>(INITIAL_SESSIONS);
-  const [activeId, setActiveId] = useState<string>("1");
+  const [activeId, setActiveId] = useState<string>("");
+  const pathname = usePathname();
+
+  // Sync sessions from localStorage (chats created via the AI page)
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("advo-chats") || "{}");
+      const fromStorage: ChatSession[] = Object.entries(stored).map(([id, data]: [string, any]) => ({
+        id,
+        title: data.title || "Untitled chat",
+        preview: data.messages?.[0]?.content?.slice(0, 60) || "",
+        timestamp: new Date(data.createdAt || Date.now()),
+        starred: false,
+      }));
+      if (fromStorage.length > 0) {
+        setSessions((prev) => {
+          const existingIds = new Set(prev.map((s) => s.id));
+          const newOnes = fromStorage.filter((s) => !existingIds.has(s.id));
+          return newOnes.length > 0 ? [...newOnes, ...prev] : prev;
+        });
+      }
+    } catch {}
+  }, [pathname]); // re-sync on every navigation
+
+  // Sync active chat from URL
+  useEffect(() => {
+    const match = pathname?.match(/\/ai\/c\/(.+)/);
+    if (match) setActiveId(match[1]);
+    else if (pathname === "/ai") setActiveId("");
+  }, [pathname]);
 
   // Close mobile drawer on resize to desktop
   useEffect(() => {
@@ -409,6 +443,7 @@ export default function AISidebar() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
 
   return (
     <>
