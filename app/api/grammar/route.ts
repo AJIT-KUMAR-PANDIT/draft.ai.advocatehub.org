@@ -1,63 +1,81 @@
-import { NextRequest } from "next/server";
-import { getLLMProvider } from "@/lib/llm";
+/**
+ * Grammar check via LanguageTool public API — completely free, no API key.
+ * https://api.languagetool.org/v2/check
+ */
 
-const SYSTEM_PROMPT = `You are an expert legal document grammar and style checker.
-Analyse the provided text and return a JSON array of issues.
-Each issue must have exactly these fields:
-{
-  "id": string (unique, e.g. "g1"),
-  "type": "grammar" | "spelling" | "style" | "legal-style",
-  "severity": "error" | "warning" | "info",
-  "original": "the exact problematic text snippet (max 60 chars)",
-  "suggestion": "the corrected version",
-  "reason": "brief plain-English explanation (max 80 chars)"
+import { NextRequest } from "next/server";
+
+const LT_URL = "https://api.languagetool.org/v2/check";
+
+interface LTMatch {
+  message: string;
+  shortMessage?: string;
+  replacements: { value: string }[];
+  offset: number;
+  length: number;
+  context: { text: string; offset: number; length: number };
+  rule: { id: string; description: string; issueType: string };
 }
-Return ONLY valid JSON array. No markdown, no explanation outside the array.
-If no issues are found return [].`;
+
+type Severity = "error" | "warning" | "info";
+type IssueType = "grammar" | "spelling" | "style" | "typographical" | "punctuation";
+
+function mapIssueType(issueType: string): { type: IssueType; severity: Severity } {
+  switch (issueType) {
+    case "misspelling":   return { type: "spelling",      severity: "error"   };
+    case "grammar":       return { type: "grammar",       severity: "error"   };
+    case "style":         return { type: "style",         severity: "info"    };
+    case "typographical": return { type: "typographical", severity: "warning" };
+    case "punctuation":   return { type: "punctuation",   severity: "warning" };
+    default:              return { type: "grammar",       severity: "warning" };
+  }
+}
 
 export async function POST(req: NextRequest) {
-  const { text } = await req.json() as { text: string };
-  if (!text?.trim()) {
-    return Response.json([]);
-  }
+  const { text } = (await req.json()) as { text: string };
+  if (!text?.trim()) return Response.json([]);
 
-  const provider = getLLMProvider();
+  const body = new URLSearchParams({
+    text:     text.slice(0, 20_000), // LT free tier limit
+    language: "en-IN",               // Indian English
+    enabledOnly: "false",
+  });
 
-  const messages = [
-    { role: "system" as const, content: SYSTEM_PROMPT },
-    { role: "user"   as const, content: `Check this document:\n\n${text.slice(0, 6000)}` },
-  ];
-
-  // Collect full response (grammar check doesn't need streaming)
-  let full = "";
-  const stream = await provider.stream(messages, req.signal);
-  const reader  = stream.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (payload === "[DONE]") break;
-      try {
-        const token = JSON.parse(payload)?.choices?.[0]?.delta?.content ?? "";
-        full += token;
-      } catch {}
-    }
-  }
-
-  // Extract JSON from response (LLM may wrap in ```json ... ```)
-  const match = full.match(/\[[\s\S]*\]/);
+  let data: { matches: LTMatch[] };
   try {
-    const issues = JSON.parse(match?.[0] ?? "[]");
-    return Response.json(issues);
-  } catch {
+    const res = await fetch(LT_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+      body:    body.toString(),
+      signal:  req.signal,
+    });
+    if (!res.ok) {
+      console.error("LanguageTool error", res.status);
+      return Response.json([]);
+    }
+    data = await res.json();
+  } catch (e: any) {
+    if (e?.name === "AbortError") return new Response(null, { status: 499 });
+    console.error("LanguageTool fetch failed", e);
     return Response.json([]);
   }
+
+  const issues = (data.matches ?? []).slice(0, 40).map((m, i) => {
+    const { type, severity } = mapIssueType(m.rule.issueType);
+    // Extract the original problematic text from context
+    const original = m.context.text.slice(m.context.offset, m.context.offset + m.length).slice(0, 60);
+    const suggestion = m.replacements[0]?.value ?? "";
+
+    return {
+      id:         `lt-${i}`,
+      type,
+      severity,
+      original:   original || "(see reason)",
+      suggestion: suggestion || m.rule.description,
+      reason:     (m.shortMessage || m.message).slice(0, 100),
+      offset:     m.offset,
+    };
+  });
+
+  return Response.json(issues);
 }
