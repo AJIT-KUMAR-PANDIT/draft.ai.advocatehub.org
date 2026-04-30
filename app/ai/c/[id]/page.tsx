@@ -294,7 +294,7 @@ export default function ChatPage() {
             // On mobile doc view, hide the input
             hasDocPanel && mobileView === "doc" && "hidden md:flex",
           )}>
-            <div className="pointer-events-auto w-full flex justify-center px-2 sm:px-4">
+            <div className=" pointer-events-auto w-full flex justify-center px-2 sm:px-4">
               <AI_Prompt
                 onSubmit={handleSubmit}
                 placeholder={streaming ? "Drafting document…" : "Draft an agreement, petition, contract…"}
